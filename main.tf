@@ -166,6 +166,12 @@ resource "aws_subnet" "public_2" {
   }
 }
 
+# Associate the SECOND public subnet with the Public Route Table
+resource "aws_route_table_association" "public_2_assoc" {
+  subnet_id      = aws_subnet.public_2.id
+  route_table_id = aws_route_table.public_rt.id
+}
+
 # 15. Create the Application Load Balancer
 resource "aws_lb" "app_alb" {
   name               = "my-app-alb"
@@ -224,7 +230,7 @@ resource "aws_instance" "web_server" {
               yum install -y httpd
               systemctl start httpd
               systemctl enable httpd
-              echo "<h1>Hello from the Private Subnet!</h1>" > /var/www/html/index.html
+              echo "<h1>Hello from the Private Subnet in AZ 1a!</h1>" > /var/www/html/index.html
               EOF
 
   tags = {
@@ -243,4 +249,51 @@ resource "aws_lb_target_group_attachment" "tg_attachment" {
 output "alb_dns_name" {
   value       = aws_lb.app_alb.dns_name
   description = "Copy this URL into your browser to access the website"
+}
+
+# 21. Create a Second Private Subnet in AZ 1b
+resource "aws_subnet" "private_2" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.4.0/24"
+  availability_zone = "us-east-1b"
+
+  tags = {
+    Name = "private-subnet-1b"
+  }
+}
+
+# 22. Associate the Second Private Subnet with the Private Route Table
+# This allows the second EC2 instance to reach the internet via the existing NAT Gateway
+resource "aws_route_table_association" "private_2_assoc" {
+  subnet_id      = aws_subnet.private_2.id
+  route_table_id = aws_route_table.private_rt.id
+}
+
+# 23. Create the Second EC2 Instance in AZ 1b
+resource "aws_instance" "web_server_2" {
+  ami           = data.aws_ami.amazon_linux_2023.id # Using the dynamic data block from earlier
+  instance_type = "t2.micro"
+  subnet_id     = aws_subnet.private_2.id # Placed in the new AZ 1b private subnet
+
+  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "<h1>Hello from the Private Subnet in AZ 1b!</h1>" > /var/www/html/index.html
+              EOF
+
+  tags = {
+    Name = "private-web-server-2"
+  }
+}
+
+# 24. Register the Second EC2 Instance to the Target Group
+resource "aws_lb_target_group_attachment" "tg_attachment_2" {
+  target_group_arn = aws_lb_target_group.app_tg.arn
+  target_id        = aws_instance.web_server_2.id
+  port             = 80
 }
