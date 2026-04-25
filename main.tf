@@ -216,7 +216,7 @@ resource "aws_lb_listener" "http_listener" {
 
 # 18. Create the EC2 Instance (in the PRIVATE subnet)
 resource "aws_instance" "web_server" {
-  ami           = "ami-0c7217cdde317cfec" # Standard Amazon Linux 2023 AMI in us-east-1
+  ami           = "ami-098e39bafa7e7303d" # Standard Amazon Linux 2023 AMI in us-east-1
   instance_type = "t2.micro"
   subnet_id     = aws_subnet.private.id
 
@@ -271,7 +271,7 @@ resource "aws_route_table_association" "private_2_assoc" {
 
 # 23. Create the Second EC2 Instance in AZ 1b
 resource "aws_instance" "web_server_2" {
-  ami           = data.aws_ami.amazon_linux_2023.id # Using the dynamic data block from earlier
+  ami           = "ami-098e39bafa7e7303d"
   instance_type = "t2.micro"
   subnet_id     = aws_subnet.private_2.id # Placed in the new AZ 1b private subnet
 
