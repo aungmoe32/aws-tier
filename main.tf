@@ -153,3 +153,94 @@ resource "aws_security_group" "ec2_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+# 14. Create a Second Public Subnet (Required for ALB)
+resource "aws_subnet" "public_2" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.3.0/24"
+  availability_zone       = "us-east-1b"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name = "public-subnet-1b"
+  }
+}
+
+# 15. Create the Application Load Balancer
+resource "aws_lb" "app_alb" {
+  name               = "my-app-alb"
+  internal           = false # "false" makes it Internet-facing
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+
+  # The ALB is placed into both public subnets across two AZs
+  subnets = [aws_subnet.public.id, aws_subnet.public_2.id]
+}
+
+# 16. Create the Target Group
+resource "aws_lb_target_group" "app_tg" {
+  name     = "my-app-target-group"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.main.id
+
+  # Health Check configuration
+  health_check {
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+}
+
+# 17. Create the ALB Listener
+resource "aws_lb_listener" "http_listener" {
+  load_balancer_arn = aws_lb.app_alb.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app_tg.arn
+  }
+}
+
+# 18. Create the EC2 Instance (in the PRIVATE subnet)
+resource "aws_instance" "web_server" {
+  ami           = "ami-0c7217cdde317cfec" # Standard Amazon Linux 2023 AMI in us-east-1
+  instance_type = "t2.micro"
+  subnet_id     = aws_subnet.private.id
+
+  # Attach the Private EC2 Security Group
+  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+
+  # user_data runs a script on boot to install a web server so the health check passes
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "<h1>Hello from the Private Subnet!</h1>" > /var/www/html/index.html
+              EOF
+
+  tags = {
+    Name = "private-web-server"
+  }
+}
+
+# 19. Register the EC2 Instance to the Target Group
+resource "aws_lb_target_group_attachment" "tg_attachment" {
+  target_group_arn = aws_lb_target_group.app_tg.arn
+  target_id        = aws_instance.web_server.id
+  port             = 80
+}
+
+# 20. Output the ALB DNS Name to your terminal
+output "alb_dns_name" {
+  value       = aws_lb.app_alb.dns_name
+  description = "Copy this URL into your browser to access the website"
+}
