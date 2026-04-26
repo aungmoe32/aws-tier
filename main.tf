@@ -336,3 +336,21 @@ resource "aws_iam_instance_profile" "ssm_profile" {
   name = "ec2-ssm-profile"
   role = aws_iam_role.ssm_role.name
 }
+
+resource "aws_autoscaling_policy" "request_count_tracking" {
+  name                   = "alb-request-count-policy"
+  autoscaling_group_name = aws_autoscaling_group.app_asg.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ALBRequestCountPerTarget"
+
+      # Requires the ALB Target Group ARN suffix so CloudWatch knows which traffic to monitor
+      resource_label = "${aws_lb.app_alb.arn_suffix}/${aws_lb_target_group.app_tg.arn_suffix}"
+    }
+
+    # Scale out if each server is handling more than 1000 requests per minute
+    target_value = 1000.0
+  }
+}
