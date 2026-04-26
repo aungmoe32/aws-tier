@@ -214,36 +214,6 @@ resource "aws_lb_listener" "http_listener" {
   }
 }
 
-# 18. Create the EC2 Instance (in the PRIVATE subnet)
-resource "aws_instance" "web_server" {
-  ami           = "ami-098e39bafa7e7303d" # Standard Amazon Linux 2023 AMI in us-east-1
-  instance_type = "t2.micro"
-  subnet_id     = aws_subnet.private.id
-
-  # Attach the Private EC2 Security Group
-  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
-
-  # user_data runs a script on boot to install a web server so the health check passes
-  user_data = <<-EOF
-              #!/bin/bash
-              yum update -y
-              yum install -y httpd
-              systemctl start httpd
-              systemctl enable httpd
-              echo "<h1>Hello from the Private Subnet in AZ 1a!</h1>" > /var/www/html/index.html
-              EOF
-
-  tags = {
-    Name = "private-web-server"
-  }
-}
-
-# 19. Register the EC2 Instance to the Target Group
-resource "aws_lb_target_group_attachment" "tg_attachment" {
-  target_group_arn = aws_lb_target_group.app_tg.arn
-  target_id        = aws_instance.web_server.id
-  port             = 80
-}
 
 # 20. Output the ALB DNS Name to your terminal
 output "alb_dns_name" {
@@ -269,31 +239,67 @@ resource "aws_route_table_association" "private_2_assoc" {
   route_table_id = aws_route_table.private_rt.id
 }
 
-# 23. Create the Second EC2 Instance in AZ 1b
-resource "aws_instance" "web_server_2" {
-  ami           = "ami-098e39bafa7e7303d"
+# 1. Create the Launch Template
+resource "aws_launch_template" "app_lt" {
+  name_prefix   = "app-launch-template-"
+  image_id      = "ami-098e39bafa7e7303d"
   instance_type = "t2.micro"
-  subnet_id     = aws_subnet.private_2.id # Placed in the new AZ 1b private subnet
 
+  # Attach the Private EC2 Security Group
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
-  user_data = <<-EOF
-              #!/bin/bash
-              yum update -y
-              yum install -y httpd
-              systemctl start httpd
-              systemctl enable httpd
-              echo "<h1>Hello from the Private Subnet in AZ 1b!</h1>" > /var/www/html/index.html
-              EOF
+  # Launch Templates require user_data to be base64 encoded
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install -y httpd
+    systemctl start httpd
+    systemctl enable httpd
+    
+    # Retrieve IMDSv2 session token
+    TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
 
-  tags = {
-    Name = "private-web-server-2"
+    # Get Availability Zone and Region
+    AZ=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+    REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/region)
+
+    # Write output to index.html
+    echo "<div><p><b>Region:</b> $REGION</p><p><b>Availability Zone:</b> $AZ</p></div>" > /var/www/html/index.html
+    EOF
+  )
+
+  # Automatically tag the EC2 instances created by the ASG
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "asg-web-server"
+    }
   }
 }
 
-# 24. Register the Second EC2 Instance to the Target Group
-resource "aws_lb_target_group_attachment" "tg_attachment_2" {
-  target_group_arn = aws_lb_target_group.app_tg.arn
-  target_id        = aws_instance.web_server_2.id
-  port             = 80
+# 2. Create the Auto Scaling Group
+resource "aws_autoscaling_group" "app_asg" {
+  name = "app-autoscaling-group"
+
+  # Instructs the ASG to deploy instances evenly across both private subnets
+  vpc_zone_identifier = [aws_subnet.private.id, aws_subnet.private_2.id]
+
+  # Automatically registers new instances to your ALB Target Group
+  target_group_arns = [aws_lb_target_group.app_tg.arn]
+
+  # Self-Healing: Tell the ASG to use the ALB's health checks to determine instance health
+  health_check_type         = "ELB"
+  health_check_grace_period = 300 # Give the instance 5 minutes to boot before checking health
+
+  # Capacity settings
+  min_size         = 2
+  desired_capacity = 2
+  max_size         = 4
+
+  launch_template {
+    id      = aws_launch_template.app_lt.id
+    version = "$Latest"
+  }
 }
+
+
