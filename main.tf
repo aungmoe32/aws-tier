@@ -248,6 +248,10 @@ resource "aws_launch_template" "app_lt" {
   # Attach the Private EC2 Security Group
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
+  iam_instance_profile {
+    name = aws_iam_instance_profile.ssm_profile.name
+  }
+
   # Launch Templates require user_data to be base64 encoded
   user_data = base64encode(<<-EOF
     #!/bin/bash
@@ -303,3 +307,32 @@ resource "aws_autoscaling_group" "app_asg" {
 }
 
 
+# 1. Create the IAM Role for EC2
+resource "aws_iam_role" "ssm_role" {
+  name = "ec2-ssm-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# 2. Attach the AWS Managed SSM Policy to the Role
+resource "aws_iam_role_policy_attachment" "ssm_policy_attach" {
+  role       = aws_iam_role.ssm_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# 3. Create an IAM Instance Profile (Required to attach a role to an EC2 instance)
+resource "aws_iam_instance_profile" "ssm_profile" {
+  name = "ec2-ssm-profile"
+  role = aws_iam_role.ssm_role.name
+}
