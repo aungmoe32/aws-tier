@@ -192,7 +192,7 @@ resource "aws_lb_target_group" "app_tg" {
 
   # Health Check configuration
   health_check {
-    path                = "/"
+    path                = "/health"
     protocol            = "HTTP"
     matcher             = "200"
     interval            = 30
@@ -256,20 +256,91 @@ resource "aws_launch_template" "app_lt" {
   user_data = base64encode(<<-EOF
     #!/bin/bash
     yum update -y
-    yum install -y httpd
-    systemctl start httpd
-    systemctl enable httpd
-    
-    # Retrieve IMDSv2 session token
+    yum install -y python3 python3-pip
+    pip3 install flask pymysql
+
+    # 1. Retrieve IMDSv2 metadata
     TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-
-    # Get Availability Zone and Region
     AZ=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
-    REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/region)
 
-    # Write output to index.html
-    echo "<div><p><b>Region:</b> $REGION</p><p><b>Availability Zone:</b> $AZ</p></div>" > /var/www/html/index.html
-    EOF
+    # 2. Write the Python Flask Application
+    cat << 'APP_EOF' > /home/ec2-user/app.py
+    from flask import Flask
+    import pymysql
+    import os
+
+    app = Flask(__name__)
+
+    # Read environment variables injected by Systemd
+    DB_HOST = os.environ.get("DB_HOST")
+    DB_USER = os.environ.get("DB_USER")
+    DB_PASS = os.environ.get("DB_PASS")
+    DB_NAME = os.environ.get("DB_NAME")
+    AZ = os.environ.get("AZ")
+
+    def get_db_connection():
+        return pymysql.connect(
+            host=DB_HOST, 
+            user=DB_USER, 
+            password=DB_PASS, 
+            database=DB_NAME, 
+            cursorclass=pymysql.cursors.DictCursor
+        )
+
+    @app.route('/')
+    def index():
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Create table if it doesn't exist
+            cursor.execute("CREATE TABLE IF NOT EXISTS visits (id INT AUTO_INCREMENT PRIMARY KEY, az VARCHAR(255))")
+            
+            # Insert a new visit record into the database
+            cursor.execute("INSERT INTO visits (az) VALUES (%s)", (AZ,))
+            conn.commit()
+            
+            # Query the total number of visits
+            cursor.execute("SELECT COUNT(*) as count FROM visits")
+            count = cursor.fetchone()['count']
+        conn.close()
+        
+        return f"<h1>Hello from AZ: {AZ}</h1><p>Total website visits logged in RDS: {count}</p>"
+
+    # Dedicated health check path for the ALB
+    @app.route('/health')
+    def health():
+        return "OK", 200
+
+    if __name__ == '__main__':
+        # Run on Port 80 to accept traffic from the ALB
+        app.run(host='0.0.0.0', port=80)
+    APP_EOF
+
+    # 3. Create a Systemd service to run the Python app continuously
+    cat << SVC_EOF > /etc/systemd/system/flaskapp.service
+    [Unit]
+    Description=Flask Web Server
+    After=network.target
+
+    [Service]
+    User=root
+    # Terraform dynamically injects the RDS connection details here
+    Environment="DB_HOST=${aws_db_instance.app_database.address}"
+    Environment="DB_USER=${aws_db_instance.app_database.username}"
+    Environment="DB_PASS=${aws_db_instance.app_database.password}"
+    Environment="DB_NAME=webappdb"
+    Environment="AZ=$AZ"
+    ExecStart=/usr/bin/python3 /home/ec2-user/app.py
+    Restart=always
+
+    [Install]
+    WantedBy=multi-user.target
+    SVC_EOF
+
+    # 4. Start the Python server
+    systemctl daemon-reload
+    systemctl start flaskapp
+    systemctl enable flaskapp
+  EOF
   )
 
   # Automatically tag the EC2 instances created by the ASG
