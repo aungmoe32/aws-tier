@@ -133,9 +133,44 @@ resource "aws_subnet" "private_2" {
   }
 }
 
+# 1. Create a Second Elastic IP for the new NAT Gateway
+resource "aws_eip" "nat_eip_2" {
+  domain = "vpc"
+
+  tags = {
+    Name = "main-nat-eip-2"
+  }
+}
+
+# 2. Create the Second NAT Gateway in the AZ 1b Public Subnet
+resource "aws_nat_gateway" "nat_gw_2" {
+  allocation_id = aws_eip.nat_eip_2.id
+  subnet_id     = aws_subnet.public_2.id # Placed in AZ 1b
+
+  depends_on = [aws_internet_gateway.igw]
+
+  tags = {
+    Name = "main-nat-gw-2"
+  }
+}
+
+# 3. Create a Second Private Route Table specifically for AZ 1b
+resource "aws_route_table" "private_rt_2" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_gw_2.id # Points to the new NAT GW
+  }
+
+  tags = {
+    Name = "private-route-table-2"
+  }
+}
+
 # 22. Associate the Second Private Subnet with the Private Route Table
 # This allows the second EC2 instance to reach the internet via the existing NAT Gateway
 resource "aws_route_table_association" "private_2_assoc" {
   subnet_id      = aws_subnet.private_2.id
-  route_table_id = aws_route_table.private_rt.id
+  route_table_id = aws_route_table.private_rt_2.id
 }
