@@ -1,7 +1,4 @@
-# 1. Define the AWS Provider
-provider "aws" {
-  region = "us-east-1"
-}
+
 
 # 2. Create the VPC
 resource "aws_vpc" "main" {
@@ -212,13 +209,6 @@ resource "aws_lb_listener" "http_listener" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app_tg.arn
   }
-}
-
-
-# 20. Output the ALB DNS Name to your terminal
-output "alb_dns_name" {
-  value       = aws_lb.app_alb.dns_name
-  description = "Copy this URL into your browser to access the website"
 }
 
 # 21. Create a Second Private Subnet in AZ 1b
@@ -486,8 +476,8 @@ resource "aws_db_instance" "app_database" {
   db_name = "webappdb"
 
   # Credentials (In production, inject these via AWS Secrets Manager)
-  username = "admin"
-  password = "SuperSecretPassword123!"
+  username = var.db_username
+  password = var.db_password
 
   # Network Placement
   db_subnet_group_name   = aws_db_subnet_group.db_subnet_group.name
@@ -499,8 +489,3 @@ resource "aws_db_instance" "app_database" {
   skip_final_snapshot = true # Set to false in production to prevent accidental data loss
 }
 
-# 5. Output the Database Endpoint
-output "db_endpoint" {
-  value       = aws_db_instance.app_database.endpoint
-  description = "The connection endpoint for the EC2 instances to talk to the database"
-}
