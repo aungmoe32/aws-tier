@@ -1,4 +1,4 @@
-# 2. Create the VPC
+# Create the VPC
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
@@ -9,7 +9,7 @@ resource "aws_vpc" "main" {
   }
 }
 
-# 3. Create a Public Subnet
+# Create a Public Subnet
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
@@ -21,7 +21,7 @@ resource "aws_subnet" "public" {
   }
 }
 
-# 4. Create a Private Subnet
+# Create a Private Subnet
 resource "aws_subnet" "private" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.2.0/24"
@@ -33,7 +33,7 @@ resource "aws_subnet" "private" {
   }
 }
 
-# 5. Create an Internet Gateway (IGW)
+# Create an Internet Gateway (IGW)
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
@@ -42,7 +42,7 @@ resource "aws_internet_gateway" "igw" {
   }
 }
 
-# 6. Create a Public Route Table
+# Create a Public Route Table
 resource "aws_route_table" "public_rt" {
   vpc_id = aws_vpc.main.id
 
@@ -56,13 +56,13 @@ resource "aws_route_table" "public_rt" {
   }
 }
 
-# 7. Associate the Public Route Table with the Public Subnet
+# Associate the Public Route Table with the Public Subnet
 resource "aws_route_table_association" "public_assoc" {
   subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public_rt.id
 }
 
-# 8. Create an Elastic IP for the NAT Gateway
+# Create an Elastic IP for the NAT Gateway
 resource "aws_eip" "nat_eip" {
   domain = "vpc"
 
@@ -71,7 +71,7 @@ resource "aws_eip" "nat_eip" {
   }
 }
 
-# 9. Create the NAT Gateway (Must be placed in the PUBLIC Subnet)
+# Create the NAT Gateway (Must be placed in the PUBLIC Subnet)
 resource "aws_nat_gateway" "nat_gw" {
   allocation_id = aws_eip.nat_eip.id
   subnet_id     = aws_subnet.public.id
@@ -84,7 +84,7 @@ resource "aws_nat_gateway" "nat_gw" {
   }
 }
 
-# 10. Create a Private Route Table
+# Create a Private Route Table
 resource "aws_route_table" "private_rt" {
   vpc_id = aws_vpc.main.id
 
@@ -98,13 +98,13 @@ resource "aws_route_table" "private_rt" {
   }
 }
 
-# 11. Associate the Private Route Table with the Private Subnet
+# Associate the Private Route Table with the Private Subnet
 resource "aws_route_table_association" "private_assoc" {
   subnet_id      = aws_subnet.private.id
   route_table_id = aws_route_table.private_rt.id
 }
 
-# 14. Create a Second Public Subnet (Required for ALB)
+# Create a Second Public Subnet (Required for ALB)
 resource "aws_subnet" "public_2" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.3.0/24"
@@ -122,7 +122,7 @@ resource "aws_route_table_association" "public_2_assoc" {
   route_table_id = aws_route_table.public_rt.id
 }
 
-# 21. Create a Second Private Subnet in AZ 1b
+# Create a Second Private Subnet in AZ 1b
 resource "aws_subnet" "private_2" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.4.0/24"
@@ -133,7 +133,7 @@ resource "aws_subnet" "private_2" {
   }
 }
 
-# 1. Create a Second Elastic IP for the new NAT Gateway
+# Create a Second Elastic IP for the new NAT Gateway
 resource "aws_eip" "nat_eip_2" {
   domain = "vpc"
 
@@ -142,7 +142,7 @@ resource "aws_eip" "nat_eip_2" {
   }
 }
 
-# 2. Create the Second NAT Gateway in the AZ 1b Public Subnet
+# Create the Second NAT Gateway in the AZ 1b Public Subnet
 resource "aws_nat_gateway" "nat_gw_2" {
   allocation_id = aws_eip.nat_eip_2.id
   subnet_id     = aws_subnet.public_2.id # Placed in AZ 1b
@@ -154,7 +154,7 @@ resource "aws_nat_gateway" "nat_gw_2" {
   }
 }
 
-# 3. Create a Second Private Route Table specifically for AZ 1b
+# Create a Second Private Route Table specifically for AZ 1b
 resource "aws_route_table" "private_rt_2" {
   vpc_id = aws_vpc.main.id
 
@@ -168,7 +168,7 @@ resource "aws_route_table" "private_rt_2" {
   }
 }
 
-# 22. Associate the Second Private Subnet with the Private Route Table
+# Associate the Second Private Subnet with the Private Route Table
 # This allows the second EC2 instance to reach the internet via the existing NAT Gateway
 resource "aws_route_table_association" "private_2_assoc" {
   subnet_id      = aws_subnet.private_2.id

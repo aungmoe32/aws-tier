@@ -1,4 +1,4 @@
-# 12. Create the Security Group for the ALB (Publicly accessible)
+# Create the Security Group for the ALB (Publicly accessible)
 resource "aws_security_group" "alb_sg" {
   name        = "alb-security-group"
   description = "Allow HTTP inbound traffic"
@@ -19,7 +19,7 @@ resource "aws_security_group" "alb_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
-# 13. Create the Security Group for EC2 (Private, restricted to ALB)
+# Create the Security Group for EC2 (Private, restricted to ALB)
 resource "aws_security_group" "ec2_sg" {
   name        = "ec2-security-group"
   description = "Allow HTTP inbound traffic ONLY from ALB"
@@ -42,7 +42,7 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-# 1. Create the IAM Role for EC2
+# Create the IAM Role for EC2
 resource "aws_iam_role" "ssm_role" {
   name = "ec2-ssm-role"
 
@@ -60,18 +60,18 @@ resource "aws_iam_role" "ssm_role" {
   })
 }
 
-# 2. Attach the AWS Managed SSM Policy to the Role
+# Attach the AWS Managed SSM Policy to the Role
 resource "aws_iam_role_policy_attachment" "ssm_policy_attach" {
   role       = aws_iam_role.ssm_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# 3. Create an IAM Instance Profile (Required to attach a role to an EC2 instance)
+# Create an IAM Instance Profile (Required to attach a role to an EC2 instance)
 resource "aws_iam_instance_profile" "ssm_profile" {
   name = "ec2-ssm-profile"
   role = aws_iam_role.ssm_role.name
 }
-# 3. Create the Database Security Group (Security Group Chaining)
+# Create the Database Security Group (Security Group Chaining)
 resource "aws_security_group" "db_sg" {
   name        = "db-security-group"
   description = "Allow MySQL traffic from EC2 instances"

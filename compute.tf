@@ -1,4 +1,4 @@
-# 15. Create the Application Load Balancer
+# Create the Application Load Balancer
 resource "aws_lb" "app_alb" {
   name               = "my-app-alb"
   internal           = false # "false" makes it Internet-facing
@@ -9,7 +9,7 @@ resource "aws_lb" "app_alb" {
   subnets = [aws_subnet.public.id, aws_subnet.public_2.id]
 }
 
-# 16. Create the Target Group
+# Create the Target Group
 resource "aws_lb_target_group" "app_tg" {
   name     = "my-app-target-group"
   port     = 80
@@ -28,7 +28,7 @@ resource "aws_lb_target_group" "app_tg" {
   }
 }
 
-# 17. Create the ALB Listener
+# Create the ALB Listener
 resource "aws_lb_listener" "http_listener" {
   load_balancer_arn = aws_lb.app_alb.arn
   port              = "80"
@@ -40,7 +40,7 @@ resource "aws_lb_listener" "http_listener" {
   }
 }
 
-# 1. Create the Launch Template
+# Create the Launch Template
 resource "aws_launch_template" "app_lt" {
   name_prefix   = "app-launch-template-"
   image_id      = "ami-098e39bafa7e7303d"
@@ -60,11 +60,11 @@ resource "aws_launch_template" "app_lt" {
     yum install -y python3 python3-pip
     pip3 install flask pymysql
 
-    # 1. Retrieve IMDSv2 metadata
+    # Retrieve IMDSv2 metadata
     TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
     AZ=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
 
-    # 2. Write the Python Flask Application
+    # Write the Python Flask Application
     cat << 'APP_EOF' > /home/ec2-user/app.py
     from flask import Flask
     import pymysql
@@ -116,7 +116,7 @@ resource "aws_launch_template" "app_lt" {
         app.run(host='0.0.0.0', port=80)
     APP_EOF
 
-    # 3. Create a Systemd service to run the Python app continuously
+    # Create a Systemd service to run the Python app continuously
     cat << SVC_EOF > /etc/systemd/system/flaskapp.service
     [Unit]
     Description=Flask Web Server
@@ -137,7 +137,7 @@ resource "aws_launch_template" "app_lt" {
     WantedBy=multi-user.target
     SVC_EOF
 
-    # 4. Start the Python server
+    # Start the Python server
     systemctl daemon-reload
     systemctl start flaskapp
     systemctl enable flaskapp
@@ -153,7 +153,7 @@ resource "aws_launch_template" "app_lt" {
   }
 }
 
-# 2. Create the Auto Scaling Group
+# Create the Auto Scaling Group
 resource "aws_autoscaling_group" "app_asg" {
   name = "app-autoscaling-group"
 

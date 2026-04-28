@@ -1,5 +1,5 @@
 
-# 1. Create Dedicated Database Subnets (Highly Recommended)
+# Create Dedicated Database Subnets (Highly Recommended)
 resource "aws_subnet" "db_subnet_1a" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.5.0/24"
@@ -16,7 +16,7 @@ resource "aws_subnet" "db_subnet_1b" {
   tags = { Name = "db-subnet-1b" }
 }
 
-# 2. Create a DB Subnet Group
+# Create a DB Subnet Group
 resource "aws_db_subnet_group" "db_subnet_group" {
   name       = "main-db-subnet-group"
   subnet_ids = [aws_subnet.db_subnet_1a.id, aws_subnet.db_subnet_1b.id]
@@ -24,7 +24,7 @@ resource "aws_db_subnet_group" "db_subnet_group" {
   tags = { Name = "Main DB Subnet Group" }
 }
 
-# 4. Create the RDS Database Instance
+# Create the RDS Database Instance
 resource "aws_db_instance" "app_database" {
   identifier        = "app-production-db"
   engine            = "mysql"
