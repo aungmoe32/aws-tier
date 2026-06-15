@@ -73,6 +73,23 @@ resource "aws_iam_role_policy_attachment" "ssm_policy_attach" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+resource "aws_iam_role_policy" "secrets_access" {
+  name = "ec2-read-secrets"
+  role = aws_iam_role.ssm_role.id # Your existing IAM Role
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = "secretsmanager:GetSecretValue"
+        # Principle of Least Privilege: ONLY allow reading this specific secret
+        Resource = aws_secretsmanager_secret.db_secret.arn
+      }
+    ]
+  })
+}
+
 # Create an IAM Instance Profile (Required to attach a role to an EC2 instance)
 resource "aws_iam_instance_profile" "ssm_profile" {
   name = "ec2-ssm-profile"

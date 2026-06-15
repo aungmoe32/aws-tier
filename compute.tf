@@ -147,24 +147,30 @@ resource "aws_launch_template" "app_lt" {
     from flask import Flask
     import pymysql
     import os
+    import boto3
+    import json
 
     app = Flask(__name__)
 
     # Read environment variables injected by Systemd
-    DB_HOST = os.environ.get("DB_HOST")
-    DB_USER = os.environ.get("DB_USER")
-    DB_PASS = os.environ.get("DB_PASS")
-    DB_NAME = os.environ.get("DB_NAME")
     AZ = os.environ.get("AZ")
+    def get_db_credentials():
+        # Connect to Secrets Manager using the EC2's IAM Role
+        client = boto3.client('secretsmanager', region_name='ap-southeast-1')
+        response = client.get_secret_value(SecretId='prod/webapp/db-credentials')
+        
+        # Parse the JSON string we created in Terraform
+        return json.loads(response['SecretString'])
 
     def get_db_connection():
+        creds = get_db_credentials()
         return pymysql.connect(
-            host=DB_HOST, 
-            user=DB_USER, 
-            password=DB_PASS, 
-            database=DB_NAME, 
+            host=creds['host'],
+            user=creds['username'],
+            password=creds['password'],
+            database=creds['dbname'],
             cursorclass=pymysql.cursors.DictCursor
-        )
+    )
 
     @app.route('/')
     def index():
@@ -203,10 +209,6 @@ resource "aws_launch_template" "app_lt" {
     [Service]
     User=root
     # Terraform dynamically injects the RDS connection details here
-    Environment="DB_HOST=${aws_db_instance.app_database.address}"
-    Environment="DB_USER=${aws_db_instance.app_database.username}"
-    Environment="DB_PASS=${aws_db_instance.app_database.password}"
-    Environment="DB_NAME=webappdb"
     Environment="AZ=$AZ"
     ExecStart=/usr/bin/python3 /home/ec2-user/app.py
     Restart=always
