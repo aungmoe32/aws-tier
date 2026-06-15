@@ -1,25 +1,11 @@
 
-# Create Dedicated Database Subnets (Highly Recommended)
-resource "aws_subnet" "db_subnet_1a" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.5.0/24"
-  availability_zone = "us-east-1a"
 
-  tags = { Name = "db-subnet-1a" }
-}
-
-resource "aws_subnet" "db_subnet_1b" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.6.0/24"
-  availability_zone = "us-east-1b"
-
-  tags = { Name = "db-subnet-1b" }
-}
 
 # Create a DB Subnet Group
 resource "aws_db_subnet_group" "db_subnet_group" {
-  name       = "main-db-subnet-group"
-  subnet_ids = [aws_subnet.db_subnet_1a.id, aws_subnet.db_subnet_1b.id]
+  name = "main-db-subnet-group"
+  # subnet_ids = [aws_subnet.db_subnet_1a.id, aws_subnet.db_subnet_1b.id]
+  subnet_ids = [for subnet in aws_subnet.db : subnet.id]
 
   tags = { Name = "Main DB Subnet Group" }
 }

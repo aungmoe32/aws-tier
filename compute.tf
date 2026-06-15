@@ -6,7 +6,8 @@ resource "aws_lb" "app_alb" {
   security_groups    = [aws_security_group.alb_sg.id]
 
   # The ALB is placed into both public subnets across two AZs
-  subnets = [aws_subnet.public.id, aws_subnet.public_2.id]
+  subnets = [for subnet in aws_subnet.public : subnet.id]
+
 }
 
 # Create the Target Group
@@ -44,7 +45,7 @@ resource "aws_lb_listener" "http_listener" {
 resource "aws_launch_template" "app_lt" {
   name_prefix   = "app-launch-template-"
   image_id      = "ami-098e39bafa7e7303d"
-  instance_type = "t2.micro"
+  instance_type = "t3.micro"
 
   # Attach the Private EC2 Security Group
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
@@ -158,7 +159,9 @@ resource "aws_autoscaling_group" "app_asg" {
   name = "app-autoscaling-group"
 
   # Instructs the ASG to deploy instances evenly across both private subnets
-  vpc_zone_identifier = [aws_subnet.private.id, aws_subnet.private_2.id]
+  # vpc_zone_identifier = [aws_subnet.private.id, aws_subnet.private_2.id]
+  vpc_zone_identifier = [for subnet in aws_subnet.private : subnet.id]
+
 
   # Automatically registers new instances to your ALB Target Group
   target_group_arns = [aws_lb_target_group.app_tg.arn]

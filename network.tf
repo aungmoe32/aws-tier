@@ -9,28 +9,36 @@ resource "aws_vpc" "main" {
   }
 }
 
-# Create a Public Subnet
-resource "aws_subnet" "public" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  availability_zone       = "us-east-1a"
-  map_public_ip_on_launch = true # Automatically assigns public IPs to instances (like ALB nodes)
 
-  tags = {
-    Name = "public-subnet-1a"
-  }
+# Create all Public Subnets
+resource "aws_subnet" "public" {
+  for_each                = var.network_config
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = each.value.public_cidr
+  availability_zone       = each.key
+  map_public_ip_on_launch = true
+
+  tags = { Name = "public-subnet-${each.key}" }
 }
 
-# Create a Private Subnet
+# Create all Private Subnets
 resource "aws_subnet" "private" {
+  for_each          = var.network_config
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = "us-east-1a"
-  # map_public_ip_on_launch defaults to false
+  cidr_block        = each.value.private_cidr
+  availability_zone = each.key
 
-  tags = {
-    Name = "private-subnet-1a"
-  }
+  tags = { Name = "private-subnet-${each.key}" }
+}
+
+# Create all DB Subnets
+resource "aws_subnet" "db" {
+  for_each          = var.network_config
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = each.value.db_cidr
+  availability_zone = each.key
+
+  tags = { Name = "db-subnet-${each.key}" }
 }
 
 # Create an Internet Gateway (IGW)
@@ -56,121 +64,50 @@ resource "aws_route_table" "public_rt" {
   }
 }
 
-# Associate the Public Route Table with the Public Subnet
-resource "aws_route_table_association" "public_assoc" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public_rt.id
+
+# Create Elastic IPs for NAT Gateways
+resource "aws_eip" "nat" {
+  for_each = var.network_config
+  domain   = "vpc"
+
+  tags = { Name = "nat-eip-${each.key}" }
 }
 
-# Create an Elastic IP for the NAT Gateway
-resource "aws_eip" "nat_eip" {
-  domain = "vpc"
 
-  tags = {
-    Name = "main-nat-eip"
-  }
-}
-
-# Create the NAT Gateway (Must be placed in the PUBLIC Subnet)
+# Create NAT Gateways (matching the Elastic IP to the exact Public Subnet)
 resource "aws_nat_gateway" "nat_gw" {
-  allocation_id = aws_eip.nat_eip.id
-  subnet_id     = aws_subnet.public.id
+  for_each      = var.network_config
+  allocation_id = aws_eip.nat[each.key].id
+  subnet_id     = aws_subnet.public[each.key].id
 
-  # Ensure the IGW exists before creating the NAT Gateway
   depends_on = [aws_internet_gateway.igw]
 
-  tags = {
-    Name = "main-nat-gw"
-  }
+  tags = { Name = "nat-gw-${each.key}" }
 }
 
-# Create a Private Route Table
-resource "aws_route_table" "private_rt" {
-  vpc_id = aws_vpc.main.id
+
+# Create Private Route Tables
+resource "aws_route_table" "private" {
+  for_each = var.network_config
+  vpc_id   = aws_vpc.main.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_gw.id
+    nat_gateway_id = aws_nat_gateway.nat_gw[each.key].id
   }
 
-  tags = {
-    Name = "private-route-table"
-  }
+  tags = { Name = "private-rt-${each.key}" }
 }
 
-# Associate the Private Route Table with the Private Subnet
-resource "aws_route_table_association" "private_assoc" {
-  subnet_id      = aws_subnet.private.id
-  route_table_id = aws_route_table.private_rt.id
+# Associate Private Subnets with their specific Private Route Tables
+resource "aws_route_table_association" "private" {
+  for_each       = var.network_config
+  subnet_id      = aws_subnet.private[each.key].id
+  route_table_id = aws_route_table.private[each.key].id
 }
 
-# Create a Second Public Subnet (Required for ALB)
-resource "aws_subnet" "public_2" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.3.0/24"
-  availability_zone       = "us-east-1b"
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "public-subnet-1b"
-  }
-}
-
-# Associate the SECOND public subnet with the Public Route Table
-resource "aws_route_table_association" "public_2_assoc" {
-  subnet_id      = aws_subnet.public_2.id
+resource "aws_route_table_association" "public" {
+  for_each       = var.network_config
+  subnet_id      = aws_subnet.public[each.key].id
   route_table_id = aws_route_table.public_rt.id
-}
-
-# Create a Second Private Subnet in AZ 1b
-resource "aws_subnet" "private_2" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.4.0/24"
-  availability_zone = "us-east-1b"
-
-  tags = {
-    Name = "private-subnet-1b"
-  }
-}
-
-# Create a Second Elastic IP for the new NAT Gateway
-resource "aws_eip" "nat_eip_2" {
-  domain = "vpc"
-
-  tags = {
-    Name = "main-nat-eip-2"
-  }
-}
-
-# Create the Second NAT Gateway in the AZ 1b Public Subnet
-resource "aws_nat_gateway" "nat_gw_2" {
-  allocation_id = aws_eip.nat_eip_2.id
-  subnet_id     = aws_subnet.public_2.id # Placed in AZ 1b
-
-  depends_on = [aws_internet_gateway.igw]
-
-  tags = {
-    Name = "main-nat-gw-2"
-  }
-}
-
-# Create a Second Private Route Table specifically for AZ 1b
-resource "aws_route_table" "private_rt_2" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_gw_2.id # Points to the new NAT GW
-  }
-
-  tags = {
-    Name = "private-route-table-2"
-  }
-}
-
-# Associate the Second Private Subnet with the Private Route Table
-# This allows the second EC2 instance to reach the internet via the existing NAT Gateway
-resource "aws_route_table_association" "private_2_assoc" {
-  subnet_id      = aws_subnet.private_2.id
-  route_table_id = aws_route_table.private_rt_2.id
 }
