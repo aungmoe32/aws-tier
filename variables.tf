@@ -16,3 +16,7 @@ variable "network_config" {
     db_cidr      = string
   }))
 }
+variable "domain_name" {
+  description = "the domain name"
+  type        = string
+}

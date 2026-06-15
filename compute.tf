@@ -1,3 +1,47 @@
+module "ami" {
+  source = "./modules/ami"
+
+  # owners  = ["amazon"]
+  # filters = [{ name = "name", values = ["al2023-ami-2023.*-x86_64"] }, ...]
+}
+
+data "aws_route53_zone" "main" {
+  name         = var.domain_name
+  private_zone = false
+}
+
+resource "aws_acm_certificate" "app_cert" {
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+
+  tags = { Name = "app-ssl-cert" }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_route53_record" "cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.app_cert.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.main.zone_id
+}
+
+resource "aws_acm_certificate_validation" "app_cert_validation" {
+  certificate_arn         = aws_acm_certificate.app_cert.arn
+  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
+}
 # Create the Application Load Balancer
 resource "aws_lb" "app_alb" {
   name               = "my-app-alb"
@@ -36,15 +80,48 @@ resource "aws_lb_listener" "http_listener" {
   protocol          = "HTTP"
 
   default_action {
+    type = "redirect"
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301" # Permanent Redirect
+    }
+  }
+}
+
+resource "aws_lb_listener" "https_listener" {
+  load_balancer_arn = aws_lb.app_alb.arn
+  port              = "443"
+  protocol          = "HTTPS"
+
+  # Attach the validated SSL Certificate
+  ssl_policy      = "ELBSecurityPolicy-2016-08"
+  certificate_arn = aws_acm_certificate_validation.app_cert_validation.certificate_arn
+
+  # Forward decrypted traffic to the private EC2 instances
+  default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app_tg.arn
+  }
+}
+
+
+resource "aws_route53_record" "root" {
+  zone_id = data.aws_route53_zone.main.zone_id
+  name    = var.domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_lb.app_alb.dns_name
+    zone_id                = aws_lb.app_alb.zone_id
+    evaluate_target_health = true
   }
 }
 
 # Create the Launch Template
 resource "aws_launch_template" "app_lt" {
   name_prefix   = "app-launch-template-"
-  image_id      = "ami-098e39bafa7e7303d"
+  image_id      = module.ami.ami_id
   instance_type = "t3.micro"
 
   # Attach the Private EC2 Security Group
