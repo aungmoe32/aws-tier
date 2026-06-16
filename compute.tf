@@ -1,8 +1,6 @@
 module "ami" {
   source = "./modules/ami"
 
-  # owners  = ["amazon"]
-  # filters = [{ name = "name", values = ["al2023-ami-2023.*-x86_64"] }, ...]
 }
 
 data "aws_route53_zone" "main" {
@@ -43,6 +41,7 @@ resource "aws_acm_certificate_validation" "app_cert_validation" {
   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
 }
 
+
 resource "aws_lb" "app_alb" {
   name               = "my-app-alb"
   internal           = false
@@ -50,15 +49,14 @@ resource "aws_lb" "app_alb" {
   security_groups    = [aws_security_group.alb_sg.id]
 
   subnets = [for subnet in aws_subnet.public : subnet.id]
-
 }
+
 resource "aws_lb_target_group" "app_tg" {
   name     = "my-app-target-group"
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
 
-  # Health Check configuration
   health_check {
     path                = "/health"
     protocol            = "HTTP"
@@ -99,7 +97,6 @@ resource "aws_lb_listener" "https_listener" {
   }
 }
 
-
 resource "aws_route53_record" "root" {
   zone_id = data.aws_route53_zone.main.zone_id
   name    = var.domain_name
@@ -112,18 +109,16 @@ resource "aws_route53_record" "root" {
   }
 }
 
-resource "aws_launch_template" "app_lt" {
-  name_prefix   = "app-launch-template-"
-  image_id      = module.ami.ami_id
-  instance_type = "t3.micro"
 
-  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+module "compute" {
+  source = "./modules/compute"
 
-  iam_instance_profile {
-    name = aws_iam_instance_profile.ssm_profile.name
-  }
+  ami_id                    = module.ami.ami_id
+  instance_type             = var.instance_type
+  security_group_ids        = [aws_security_group.ec2_sg.id]
+  iam_instance_profile_name = aws_iam_instance_profile.ssm_profile.name
 
-  user_data = base64encode(<<-EOF
+  user_data_base64 = base64encode(<<-EOF
     #!/bin/bash
     yum update -y
     yum install -y python3 python3-pip
@@ -149,7 +144,7 @@ resource "aws_launch_template" "app_lt" {
         # Connect to Secrets Manager using the EC2's IAM Role
         client = boto3.client('secretsmanager', region_name='us-east-1')
         response = client.get_secret_value(SecretId='prod/webapp/db-credentials')
-        
+
         # Parse the JSON string we created in Terraform
         return json.loads(response['SecretString'])
 
@@ -169,16 +164,16 @@ resource "aws_launch_template" "app_lt" {
         with conn.cursor() as cursor:
             # Create table if it doesn't exist
             cursor.execute("CREATE TABLE IF NOT EXISTS visits (id INT AUTO_INCREMENT PRIMARY KEY, az VARCHAR(255))")
-            
+
             # Insert a new visit record into the database
             cursor.execute("INSERT INTO visits (az) VALUES (%s)", (AZ,))
             conn.commit()
-            
+
             # Query the total number of visits
             cursor.execute("SELECT COUNT(*) as count FROM visits")
             count = cursor.fetchone()['count']
         conn.close()
-        
+
         return f"<h1>Hello from AZ: {AZ}</h1><p>Total website visits logged in RDS: {count}</p>"
 
     # Dedicated health check path for the ALB
@@ -199,7 +194,6 @@ resource "aws_launch_template" "app_lt" {
 
     [Service]
     User=root
-    # Terraform dynamically injects the RDS connection details here
     Environment="AZ=$AZ"
     ExecStart=/usr/bin/python3 /home/ec2-user/app.py
     Restart=always
@@ -215,60 +209,11 @@ resource "aws_launch_template" "app_lt" {
   EOF
   )
 
-  tag_specifications {
-    resource_type = "instance"
-    tags = {
-      Name = "asg-web-server"
-    }
-  }
+  private_subnet_ids = [for subnet in aws_subnet.private : subnet.id]
+  target_group_arns  = [aws_lb_target_group.app_tg.arn]
+  min_size           = 2
+  desired_capacity   = 2
+  max_size           = 4
+
+  alb_resource_label = "${aws_lb.app_alb.arn_suffix}/${aws_lb_target_group.app_tg.arn_suffix}"
 }
-
-resource "aws_autoscaling_group" "app_asg" {
-  name = "app-autoscaling-group"
-
-  # Instructs the ASG to deploy instances evenly across both private subnets
-  # vpc_zone_identifier = [aws_subnet.private.id, aws_subnet.private_2.id]
-  vpc_zone_identifier = [for subnet in aws_subnet.private : subnet.id]
-
-
-  # Automatically registers new instances to your ALB Target Group
-  target_group_arns = [aws_lb_target_group.app_tg.arn]
-
-  # Self-Healing: Tell the ASG to use the ALB's health checks to determine instance health
-  health_check_type         = "ELB"
-  health_check_grace_period = 300 # Give the instance 5 minutes to boot before checking health
-
-  # Capacity settings
-  min_size         = 2
-  desired_capacity = 2
-  max_size         = 4
-
-  launch_template {
-    id      = aws_launch_template.app_lt.id
-    version = "$Latest"
-  }
-}
-
-
-
-
-resource "aws_autoscaling_policy" "request_count_tracking" {
-  name                   = "alb-request-count-policy"
-  autoscaling_group_name = aws_autoscaling_group.app_asg.name
-  policy_type            = "TargetTrackingScaling"
-
-  target_tracking_configuration {
-    predefined_metric_specification {
-      predefined_metric_type = "ALBRequestCountPerTarget"
-
-      # Requires the ALB Target Group ARN suffix so CloudWatch knows which traffic to monitor
-      resource_label = "${aws_lb.app_alb.arn_suffix}/${aws_lb_target_group.app_tg.arn_suffix}"
-    }
-
-    # Scale out if each server is handling more than 1000 requests per minute
-    target_value = 1000.0
-  }
-}
-
-
-

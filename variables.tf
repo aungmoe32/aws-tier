@@ -8,6 +8,11 @@ variable "db_name" {
   default = "webappdb"
 }
 
+variable "instance_type" {
+  type    = string
+  default = "t3.micro"
+}
+
 variable "network_config" {
   description = "Map of Availability Zones and their respective subnet CIDR blocks"
   type = map(object({
