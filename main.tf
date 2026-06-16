@@ -8,8 +8,8 @@ module "loadbalancer" {
 
   domain_name            = var.domain_name
   alb_security_group_ids = [aws_security_group.alb_sg.id]
-  public_subnet_ids      = [for subnet in aws_subnet.public : subnet.id]
-  vpc_id                 = aws_vpc.main.id
+  public_subnet_ids      = values(module.vpc.public_subnet_ids)
+  vpc_id                 = module.vpc.vpc_id
 }
 
 
@@ -112,7 +112,7 @@ module "compute" {
   EOF
   )
 
-  private_subnet_ids = [for subnet in aws_subnet.private : subnet.id]
+  private_subnet_ids = values(module.vpc.private_subnet_ids)
   target_group_arns  = [module.loadbalancer.target_group_arn]
   min_size           = 2
   desired_capacity   = 2
@@ -127,6 +127,17 @@ module "database" {
 
   db_username        = var.db_username
   db_name            = var.db_name
-  db_subnet_ids      = [for subnet in aws_subnet.db : subnet.id]
+  db_subnet_ids      = values(module.vpc.db_subnet_ids)
   security_group_ids = [aws_security_group.db_sg.id]
+}
+
+module "vpc" {
+  source = "./modules/vpc"
+
+  network_config = var.network_config
+}
+
+module "iam" {
+  source     = "./modules/iam"
+  secret_arn = module.database.secret_arn
 }

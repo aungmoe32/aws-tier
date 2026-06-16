@@ -1,19 +1,14 @@
-# Create the VPC
-resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
+resource "aws_vpc" "this" {
+  cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
 
-  tags = {
-    Name = "main-vpc"
-  }
+  tags = { Name = var.vpc_name }
 }
 
-
-# Create all Public Subnets
 resource "aws_subnet" "public" {
   for_each                = var.network_config
-  vpc_id                  = aws_vpc.main.id
+  vpc_id                  = aws_vpc.this.id
   cidr_block              = each.value.public_cidr
   availability_zone       = each.key
   map_public_ip_on_launch = true
@@ -21,51 +16,41 @@ resource "aws_subnet" "public" {
   tags = { Name = "public-subnet-${each.key}" }
 }
 
-# Create all Private Subnets
 resource "aws_subnet" "private" {
   for_each          = var.network_config
-  vpc_id            = aws_vpc.main.id
+  vpc_id            = aws_vpc.this.id
   cidr_block        = each.value.private_cidr
   availability_zone = each.key
 
   tags = { Name = "private-subnet-${each.key}" }
 }
 
-# Create all DB Subnets
 resource "aws_subnet" "db" {
   for_each          = var.network_config
-  vpc_id            = aws_vpc.main.id
+  vpc_id            = aws_vpc.this.id
   cidr_block        = each.value.db_cidr
   availability_zone = each.key
 
   tags = { Name = "db-subnet-${each.key}" }
 }
 
-# Create an Internet Gateway (IGW)
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main.id
+resource "aws_internet_gateway" "this" {
+  vpc_id = aws_vpc.this.id
 
-  tags = {
-    Name = "main-igw"
-  }
+  tags = { Name = "${var.vpc_name}-igw" }
 }
 
-# Create a Public Route Table
-resource "aws_route_table" "public_rt" {
-  vpc_id = aws_vpc.main.id
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.this.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
+    gateway_id = aws_internet_gateway.this.id
   }
 
-  tags = {
-    Name = "public-route-table"
-  }
+  tags = { Name = "${var.vpc_name}-public-rt" }
 }
 
-
-# Create Elastic IPs for NAT Gateways
 resource "aws_eip" "nat" {
   for_each = var.network_config
   domain   = "vpc"
@@ -73,33 +58,28 @@ resource "aws_eip" "nat" {
   tags = { Name = "nat-eip-${each.key}" }
 }
 
-
-# Create NAT Gateways (matching the Elastic IP to the exact Public Subnet)
-resource "aws_nat_gateway" "nat_gw" {
+resource "aws_nat_gateway" "this" {
   for_each      = var.network_config
   allocation_id = aws_eip.nat[each.key].id
   subnet_id     = aws_subnet.public[each.key].id
 
-  depends_on = [aws_internet_gateway.igw]
+  depends_on = [aws_internet_gateway.this]
 
   tags = { Name = "nat-gw-${each.key}" }
 }
 
-
-# Create Private Route Tables
 resource "aws_route_table" "private" {
   for_each = var.network_config
-  vpc_id   = aws_vpc.main.id
+  vpc_id   = aws_vpc.this.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_gw[each.key].id
+    nat_gateway_id = aws_nat_gateway.this[each.key].id
   }
 
   tags = { Name = "private-rt-${each.key}" }
 }
 
-# Associate Private Subnets with their specific Private Route Tables
 resource "aws_route_table_association" "private" {
   for_each       = var.network_config
   subnet_id      = aws_subnet.private[each.key].id
@@ -109,5 +89,5 @@ resource "aws_route_table_association" "private" {
 resource "aws_route_table_association" "public" {
   for_each       = var.network_config
   subnet_id      = aws_subnet.public[each.key].id
-  route_table_id = aws_route_table.public_rt.id
+  route_table_id = aws_route_table.public.id
 }

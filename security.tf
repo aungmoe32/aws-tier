@@ -1,7 +1,7 @@
 resource "aws_security_group" "alb_sg" {
   name        = "alb-security-group"
   description = "Allow HTTP and HTTPS inbound traffic"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
     from_port   = 80
@@ -28,7 +28,7 @@ resource "aws_security_group" "alb_sg" {
 resource "aws_security_group" "ec2_sg" {
   name        = "ec2-security-group"
   description = "Allow HTTP inbound traffic only from ALB"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
     from_port       = 80
@@ -45,15 +45,10 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-module "iam" {
-  source     = "./modules/iam"
-  secret_arn = module.database.secret_arn
-}
-
 resource "aws_security_group" "db_sg" {
   name        = "db-security-group"
   description = "Allow MySQL traffic from EC2 instances"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
     from_port       = 3306
