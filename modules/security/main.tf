@@ -1,7 +1,7 @@
-resource "aws_security_group" "alb_sg" {
+resource "aws_security_group" "alb" {
   name        = "alb-security-group"
   description = "Allow HTTP and HTTPS inbound traffic"
-  vpc_id      = module.vpc.vpc_id
+  vpc_id      = var.vpc_id
 
   ingress {
     from_port   = 80
@@ -25,16 +25,16 @@ resource "aws_security_group" "alb_sg" {
   }
 }
 
-resource "aws_security_group" "ec2_sg" {
+resource "aws_security_group" "ec2" {
   name        = "ec2-security-group"
   description = "Allow HTTP inbound traffic only from ALB"
-  vpc_id      = module.vpc.vpc_id
+  vpc_id      = var.vpc_id
 
   ingress {
     from_port       = 80
     to_port         = 80
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb_sg.id]
+    security_groups = [aws_security_group.alb.id]
   }
 
   egress {
@@ -45,16 +45,16 @@ resource "aws_security_group" "ec2_sg" {
   }
 }
 
-resource "aws_security_group" "db_sg" {
+resource "aws_security_group" "db" {
   name        = "db-security-group"
   description = "Allow MySQL traffic from EC2 instances"
-  vpc_id      = module.vpc.vpc_id
+  vpc_id      = var.vpc_id
 
   ingress {
     from_port       = 3306
     to_port         = 3306
     protocol        = "tcp"
-    security_groups = [aws_security_group.ec2_sg.id]
+    security_groups = [aws_security_group.ec2.id]
   }
 
   egress {

@@ -7,7 +7,7 @@ module "loadbalancer" {
   source = "./modules/loadbalancer"
 
   domain_name            = var.domain_name
-  alb_security_group_ids = [aws_security_group.alb_sg.id]
+  alb_security_group_ids = [module.security.alb_sg_id]
   public_subnet_ids      = values(module.vpc.public_subnet_ids)
   vpc_id                 = module.vpc.vpc_id
 }
@@ -18,7 +18,7 @@ module "compute" {
 
   ami_id                    = module.ami.ami_id
   instance_type             = var.instance_type
-  security_group_ids        = [aws_security_group.ec2_sg.id]
+  security_group_ids        = [module.security.ec2_sg_id]
   iam_instance_profile_name = module.iam.instance_profile_name
 
   user_data_base64 = base64encode(<<-EOF
@@ -128,7 +128,7 @@ module "database" {
   db_username        = var.db_username
   db_name            = var.db_name
   db_subnet_ids      = values(module.vpc.db_subnet_ids)
-  security_group_ids = [aws_security_group.db_sg.id]
+  security_group_ids = [module.security.db_sg_id]
 }
 
 module "vpc" {
@@ -140,4 +140,10 @@ module "vpc" {
 module "iam" {
   source     = "./modules/iam"
   secret_arn = module.database.secret_arn
+}
+
+module "security" {
+  source = "./modules/security"
+
+  vpc_id = module.vpc.vpc_id
 }
