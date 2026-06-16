@@ -3,110 +3,13 @@ module "ami" {
 
 }
 
-data "aws_route53_zone" "main" {
-  name         = var.domain_name
-  private_zone = false
-}
+module "loadbalancer" {
+  source = "./modules/loadbalancer"
 
-resource "aws_acm_certificate" "app_cert" {
-  domain_name       = var.domain_name
-  validation_method = "DNS"
-
-  tags = { Name = "app-ssl-cert" }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_route53_record" "cert_validation" {
-  for_each = {
-    for dvo in aws_acm_certificate.app_cert.domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      record = dvo.resource_record_value
-      type   = dvo.resource_record_type
-    }
-  }
-
-  allow_overwrite = true
-  name            = each.value.name
-  records         = [each.value.record]
-  ttl             = 60
-  type            = each.value.type
-  zone_id         = data.aws_route53_zone.main.zone_id
-}
-
-resource "aws_acm_certificate_validation" "app_cert_validation" {
-  certificate_arn         = aws_acm_certificate.app_cert.arn
-  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
-}
-
-
-resource "aws_lb" "app_alb" {
-  name               = "my-app-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb_sg.id]
-
-  subnets = [for subnet in aws_subnet.public : subnet.id]
-}
-
-resource "aws_lb_target_group" "app_tg" {
-  name     = "my-app-target-group"
-  port     = 80
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
-
-  health_check {
-    path                = "/health"
-    protocol            = "HTTP"
-    matcher             = "200"
-    interval            = 30
-    timeout             = 5
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-  }
-}
-
-resource "aws_lb_listener" "http_listener" {
-  load_balancer_arn = aws_lb.app_alb.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type = "redirect"
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
-  }
-}
-
-resource "aws_lb_listener" "https_listener" {
-  load_balancer_arn = aws_lb.app_alb.arn
-  port              = "443"
-  protocol          = "HTTPS"
-
-  ssl_policy      = "ELBSecurityPolicy-2016-08"
-  certificate_arn = aws_acm_certificate_validation.app_cert_validation.certificate_arn
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.app_tg.arn
-  }
-}
-
-resource "aws_route53_record" "root" {
-  zone_id = data.aws_route53_zone.main.zone_id
-  name    = var.domain_name
-  type    = "A"
-
-  alias {
-    name                   = aws_lb.app_alb.dns_name
-    zone_id                = aws_lb.app_alb.zone_id
-    evaluate_target_health = true
-  }
+  domain_name            = var.domain_name
+  alb_security_group_ids = [aws_security_group.alb_sg.id]
+  public_subnet_ids      = [for subnet in aws_subnet.public : subnet.id]
+  vpc_id                 = aws_vpc.main.id
 }
 
 
@@ -210,10 +113,10 @@ module "compute" {
   )
 
   private_subnet_ids = [for subnet in aws_subnet.private : subnet.id]
-  target_group_arns  = [aws_lb_target_group.app_tg.arn]
+  target_group_arns  = [module.loadbalancer.target_group_arn]
   min_size           = 2
   desired_capacity   = 2
   max_size           = 4
 
-  alb_resource_label = "${aws_lb.app_alb.arn_suffix}/${aws_lb_target_group.app_tg.arn_suffix}"
+  alb_resource_label = "${module.loadbalancer.alb_arn_suffix}/${module.loadbalancer.target_group_arn_suffix}"
 }

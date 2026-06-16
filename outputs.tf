@@ -4,6 +4,6 @@ output "db_endpoint" {
 }
 
 output "alb_dns_name" {
-  value       = aws_lb.app_alb.dns_name
+  value       = module.loadbalancer.alb_dns_name
   description = "Copy this URL into your browser to access the website"
 }

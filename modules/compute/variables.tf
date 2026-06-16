@@ -1,4 +1,3 @@
-# ── Launch Template ──────────────────────────────────────────────────────────
 
 variable "name_prefix" {
   description = "Prefix used for the launch template name and instance tag"
@@ -38,7 +37,6 @@ variable "tags" {
   default     = {}
 }
 
-# ── Auto Scaling Group ────────────────────────────────────────────────────────
 
 variable "asg_name" {
   description = "Name for the Auto Scaling Group"
@@ -80,7 +78,6 @@ variable "max_size" {
   default     = 4
 }
 
-# ── Scaling Policy ────────────────────────────────────────────────────────────
 
 variable "alb_resource_label" {
   description = "Combined ALB + Target Group ARN suffix for the CloudWatch metric (format: <alb_arn_suffix>/<tg_arn_suffix>)"
