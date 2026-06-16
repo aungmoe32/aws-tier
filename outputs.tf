@@ -1,5 +1,5 @@
 output "db_endpoint" {
-  value       = aws_db_instance.app_database.endpoint
+  value       = module.database.db_address
   description = "The connection endpoint for the EC2 instances to talk to the database"
 }
 

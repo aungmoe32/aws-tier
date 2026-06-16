@@ -19,7 +19,7 @@ module "compute" {
   ami_id                    = module.ami.ami_id
   instance_type             = var.instance_type
   security_group_ids        = [aws_security_group.ec2_sg.id]
-  iam_instance_profile_name = aws_iam_instance_profile.ssm_profile.name
+  iam_instance_profile_name = module.iam.instance_profile_name
 
   user_data_base64 = base64encode(<<-EOF
     #!/bin/bash
@@ -119,4 +119,14 @@ module "compute" {
   max_size           = 4
 
   alb_resource_label = "${module.loadbalancer.alb_arn_suffix}/${module.loadbalancer.target_group_arn_suffix}"
+}
+
+
+module "database" {
+  source = "./modules/database"
+
+  db_username        = var.db_username
+  db_name            = var.db_name
+  db_subnet_ids      = [for subnet in aws_subnet.db : subnet.id]
+  security_group_ids = [aws_security_group.db_sg.id]
 }
