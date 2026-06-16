@@ -42,19 +42,16 @@ resource "aws_acm_certificate_validation" "app_cert_validation" {
   certificate_arn         = aws_acm_certificate.app_cert.arn
   validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
 }
-# Create the Application Load Balancer
+
 resource "aws_lb" "app_alb" {
   name               = "my-app-alb"
-  internal           = false # "false" makes it Internet-facing
+  internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_sg.id]
 
-  # The ALB is placed into both public subnets across two AZs
   subnets = [for subnet in aws_subnet.public : subnet.id]
 
 }
-
-# Create the Target Group
 resource "aws_lb_target_group" "app_tg" {
   name     = "my-app-target-group"
   port     = 80
@@ -73,7 +70,6 @@ resource "aws_lb_target_group" "app_tg" {
   }
 }
 
-# Create the ALB Listener
 resource "aws_lb_listener" "http_listener" {
   load_balancer_arn = aws_lb.app_alb.arn
   port              = "80"
@@ -84,7 +80,7 @@ resource "aws_lb_listener" "http_listener" {
     redirect {
       port        = "443"
       protocol    = "HTTPS"
-      status_code = "HTTP_301" # Permanent Redirect
+      status_code = "HTTP_301"
     }
   }
 }
@@ -94,11 +90,9 @@ resource "aws_lb_listener" "https_listener" {
   port              = "443"
   protocol          = "HTTPS"
 
-  # Attach the validated SSL Certificate
   ssl_policy      = "ELBSecurityPolicy-2016-08"
   certificate_arn = aws_acm_certificate_validation.app_cert_validation.certificate_arn
 
-  # Forward decrypted traffic to the private EC2 instances
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app_tg.arn
@@ -118,25 +112,22 @@ resource "aws_route53_record" "root" {
   }
 }
 
-# Create the Launch Template
 resource "aws_launch_template" "app_lt" {
   name_prefix   = "app-launch-template-"
   image_id      = module.ami.ami_id
   instance_type = "t3.micro"
 
-  # Attach the Private EC2 Security Group
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
 
   iam_instance_profile {
     name = aws_iam_instance_profile.ssm_profile.name
   }
 
-  # Launch Templates require user_data to be base64 encoded
   user_data = base64encode(<<-EOF
     #!/bin/bash
     yum update -y
     yum install -y python3 python3-pip
-    pip3 install flask pymysql
+    pip3 install flask pymysql boto3
 
     # Retrieve IMDSv2 metadata
     TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
@@ -156,7 +147,7 @@ resource "aws_launch_template" "app_lt" {
     AZ = os.environ.get("AZ")
     def get_db_credentials():
         # Connect to Secrets Manager using the EC2's IAM Role
-        client = boto3.client('secretsmanager', region_name='ap-southeast-1')
+        client = boto3.client('secretsmanager', region_name='us-east-1')
         response = client.get_secret_value(SecretId='prod/webapp/db-credentials')
         
         # Parse the JSON string we created in Terraform
@@ -224,7 +215,6 @@ resource "aws_launch_template" "app_lt" {
   EOF
   )
 
-  # Automatically tag the EC2 instances created by the ASG
   tag_specifications {
     resource_type = "instance"
     tags = {
@@ -233,7 +223,6 @@ resource "aws_launch_template" "app_lt" {
   }
 }
 
-# Create the Auto Scaling Group
 resource "aws_autoscaling_group" "app_asg" {
   name = "app-autoscaling-group"
 
