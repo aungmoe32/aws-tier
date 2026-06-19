@@ -6,7 +6,7 @@ This project is a record of my learning journey into AWS cloud infrastructure. M
 
 ## Demo
 
-![WordPress HA Demo](./demo.gif)
+![AWS 3-Tier Web Architecture](./demo.gif)
 
 ## The Architecture
 
@@ -15,6 +15,8 @@ The infrastructure spans two Availability Zones for high availability and is div
 1. **Presentation Tier (Public Subnets):** Contains the Application Load Balancer (ALB) and NAT Gateways. This is the only part of the network exposed to the internet.
 2. **Application Tier (Private Subnets):** Contains an Auto Scaling Group of EC2 instances running a custom Python Flask application. These servers have no public IP addresses.
 3. **Data Tier (DB Subnets):** Contains a Multi-AZ Amazon RDS MySQL database. This tier is strictly isolated and stores the persistent data.
+
+![AWS 3-Tier Web Architecture](./aws_enterprise_3-tier_architecture.png)
 
 ## Tech Stack Used
 
