@@ -54,3 +54,13 @@ resource "aws_autoscaling_policy" "request_count_tracking" {
     target_value = var.scale_out_request_count
   }
 }
+
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}

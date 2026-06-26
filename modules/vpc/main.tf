@@ -91,3 +91,13 @@ resource "aws_route_table_association" "public" {
   subnet_id      = aws_subnet.public[each.key].id
   route_table_id = aws_route_table.public.id
 }
+
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}

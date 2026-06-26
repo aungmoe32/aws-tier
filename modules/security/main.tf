@@ -64,3 +64,13 @@ resource "aws_security_group" "db" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
